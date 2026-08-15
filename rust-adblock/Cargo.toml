@@ -1,0 +1,28 @@
+[package]
+name = "adblocker-wasm"
+version = "1.0.0"
+edition = "2021"
+description = "Network filtering engine compiled to WebAssembly for Manifest V3 browser extensions"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+adblock = "0.12"
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"
+
+[profile.release]
+# Size wins over speed here: the engine is built once at startup and the
+# module is shipped to every browser that installs the extension.
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# The wasm-opt binary bundled with wasm-pack predates bulk-memory support
+# and rejects the module; LLVM's release flags already handle size.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

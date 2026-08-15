@@ -1,0 +1,9 @@
+node_modules/
+rust-adblock/target/
+dist/
+*.log
+.DS_Store
+
+# Project meta (not part of the extension)
+freebuff-guide.md
+concept-ui/

@@ -1,0 +1,12 @@
+[
+  {
+    "id": 1000001,
+    "priority": 2,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||imasdk.googleapis.com^",
+      "resourceTypes": ["script", "xmlhttprequest"],
+      "initiatorDomains": ["youtube.com", "youtube-nocookie.com"]
+    }
+  }
+]
