@@ -1,8 +1,45 @@
-```
+# Compiled and build artifacts
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
 # Dependencies
-Cargo.lock
-
-# Rust build artifacts
 target/
-**/*.rs.bk
-```
+**/target/
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+# Environment
+.env
+.env.local
+*.env.*
+# Editors
+.vscode/
+.idea/
+# Coverage
+coverage/
+htmlcov/
+.coverage
+# MyPy
+.mypy_cache/
+# PyTest
+.pytest_cache/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+# Distribution / packaging
+.dist-info/
+*.egg-info/
+*.whl
+# Rust specific
+Cargo.lock
+*.rlib
+*.rmeta
+# Original rules preserved
+*.log
