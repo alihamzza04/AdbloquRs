@@ -33,6 +33,8 @@ version = "1.0.0"
 dependencies = [
  "adblock",
  "console_error_panic_hook",
+ "serde",
+ "serde_json",
  "wasm-bindgen",
 ]
 
