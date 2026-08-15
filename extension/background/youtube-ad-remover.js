@@ -558,47 +558,99 @@
   // We intercept these to detect server-side ad insertion (SSAI) segments.
   // ---------------------------------------------------------------------------
   
+
+  // ---------------------------------------------------------------------------
+  // NEW in v5: Player Response Interception for SSAI Ad Detection
+  // YouTube uses ytInitialPlayerResponse and ytInitialData to configure the player.
+  // We intercept these to detect server-side ad insertion (SSAI) segments.
+  // Enhanced in v2 with more field patterns and SSAI indicators.
+  // ---------------------------------------------------------------------------
+
   function extractAdSegments(playerResponse) {
     const segments = [];
-    
+
     try {
-      // Check for adBreaks in the player response
-      const adBreaks = playerResponse?.adBreaks || playerResponse?.storyboards?.adBreaks || [];
-      
+      // Check for adBreaks in the player response - primary indicator
+      const adBreaks = playerResponse?.adBreaks || 
+                       playerResponse?.storyboards?.adBreaks || 
+                       [];
+
       for (const break_ of adBreaks) {
-        // Each adBreak has startTimeMs and endTimeMs or durationMs
-        const startMs = break_.startTimeMs || break_.startMs || 0;
-        const durationMs = break_.durationMs || (break_.endTimeMs - startMs) || 0;
-        const endMs = break_.endTimeMs || (startMs + durationMs);
+        // Try multiple field name patterns - YouTube uses different naming conventions
+        const startMs = break_.startTimeMs || 
+                        break_.startMs || 
+                        break_.positionMs || 
+                        0;
         
+        // Duration or explicit end time
+        const durationMs = break_.durationMs || 0;
+        let endMs = break_.endTimeMs || 0;
+        
+        // NEW in v2: Also check for rtf (real-time feedback) timing fields
+        const rtfStartMs = break_.rtfStartMs || 0;
+        const rtfEndMs = break_.rtfEndMs || 0;
+        
+        // Calculate end time from available data
+        if (endMs <= 0 && durationMs > 0) {
+          endMs = startMs + durationMs;
+        } else if (endMs <= 0 && rtfEndMs > 0) {
+          // Use RTF timing as fallback
+          endMs = rtfEndMs;
+        } else if (endMs <= 0) {
+          endMs = startMs + 15000; // Default 15 second ad
+        }
+
         if (startMs > 0 && endMs > startMs) {
           segments.push({ startMs, endMs });
         }
       }
-      
-      // Also check playerAds array if present
+
+      // Also check playerAds array if present - alternative ad format
       const playerAds = playerResponse?.playerAds || [];
       for (const ad of playerAds) {
-        const startMs = ad.startTimeMs || ad.positionMs || 0;
-        const durationMs = ad.durationMs || 15000; // default 15s
-        const endMs = ad.endTimeMs || (startMs + durationMs);
+        // Multiple possible start time fields
+        const startMs = ad.startTimeMs || 
+                        ad.positionMs || 
+                        ad.startMs || 
+                        ad.cueStartTimeMs || 
+                        0;
         
+        // Duration with better defaults
+        const durationMs = ad.durationMs || ad.lengthMs || 15000;
+        const endMs = ad.endTimeMs || ad.cueEndTimeMs || (startMs + durationMs);
+
         if (startMs > 0 && endMs > startMs) {
           segments.push({ startMs, endMs });
         }
       }
-      
+
       // Check for streaming data with embedded ads (SSAI)
       const streamingData = playerResponse?.streamingData || {};
-      if (streamingData.adManifestUrl) {
-        // This indicates server-side ad insertion
-        console.log(\"[AdbloquRs] Detected SSAI stream\");
+      
+      // NEW in v2: More comprehensive SSAI detection
+      if (streamingData.adManifestUrl || 
+          streamingData.ssai || 
+          streamingData.serverSide ||
+          streamingData.adPlaylist) {
+        console.log("[AdbloquRs] Detected SSAI stream");
       }
       
+      // NEW in v2: Check for msr (media stream rendering) which often indicates SSAI
+      if (playerResponse?.msr || playerResponse?.mediaStreamRendering) {
+        console.log("[AdbloquRs] Detected MSR (potential SSAI)");
+      }
+
+      // NEW in v2: Check videoDetails for ad-related fields
+      const videoDetails = playerResponse?.videoDetails || {};
+      if (videoDetails.allowAds || videoDetails.hasAds) {
+        console.log("[AdbloquRs] Video has ad flags set");
+      }
+
     } catch (e) {
       // Silently fail - parsing errors shouldn't break video playback
+      console.warn("[AdbloquRs] Error extracting ad segments:", e);
     }
-    
+
     return segments;
   }
 
