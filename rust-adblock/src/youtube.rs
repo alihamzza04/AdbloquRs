@@ -1,9 +1,15 @@
 //! YouTube-specific ad detection and filtering logic.
 //!
 //! This module provides specialized handling for YouTube's unique ad formats,
-//! including server-side ad insertion (SSAI) detection and player response parsing.
-//! The functions here are optimized for performance and called from the content
-//! script via WebAssembly.
+//! including server-side ad insertion (SSAI) detection, player response parsing,
+//! and enhanced ad segment extraction. The functions here are optimized for 
+//! performance and called from the content script via WebAssembly.
+//!
+//! KEY IMPROVEMENTS in v2:
+//! - Enhanced SSAI detection with more field patterns
+//! - Better adBreak and playerAds parsing
+//! - Support for new YouTube player response formats
+//! - Detection of embedded ad manifests and streaming data
 
 use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -49,10 +55,7 @@ fn parse_player_response(json_str: &str) -> PlayerResponseAnalysis {
     let mut has_ads = false;
     let mut is_ssai = false;
     
-    // Use a simple JSON parser approach - we look for specific keys
-    // In production, you might use serde_json with proper types
-    
-    // Check for adBreaks array
+    // Check for adBreaks array - primary indicator of video ads
     if let Some(ad_breaks) = extract_array_field(json_str, "adBreaks") {
         for break_entry in ad_breaks {
             if let Some(segment) = parse_ad_break(&break_entry) {
@@ -62,7 +65,7 @@ fn parse_player_response(json_str: &str) -> PlayerResponseAnalysis {
         }
     }
     
-    // Check for playerAds array
+    // Check for playerAds array - alternative ad format
     if let Some(player_ads) = extract_array_field(json_str, "playerAds") {
         for ad_entry in player_ads {
             if let Some(segment) = parse_player_ad(&ad_entry) {
@@ -72,44 +75,102 @@ fn parse_player_response(json_str: &str) -> PlayerResponseAnalysis {
         }
     }
     
-    // Check for SSAI indicators
-    if json_str.contains("adManifestUrl") || json_str.contains("serverSideAd") {
+    // Check for storyboards with adBreaks (nested structure)
+    if let Some(storyboards) = extract_object_field(json_str, "storyboards") {
+        if let Some(nested_breaks) = extract_array_field(&storyboards, "adBreaks") {
+            for break_entry in nested_breaks {
+                if let Some(segment) = parse_ad_break(&break_entry) {
+                    ad_segments.push(segment);
+                    has_ads = true;
+                }
+            }
+        }
+    }
+    
+    // Check for SSAI indicators - server-side ad insertion
+    // These ads are embedded in the video stream itself
+    if json_str.contains("\"adManifestUrl\"") || json_str.contains("\"serverSideAd\"") {
         is_ssai = true;
         has_ads = true;
     }
     
     // Check for streamingData with ad indicators
     if let Some(streaming_data) = extract_object_field(json_str, "streamingData") {
-        if streaming_data.contains("adManifestUrl") {
+        if streaming_data.contains("\"adManifestUrl\"") || 
+           streaming_data.contains("\"ssai\"") ||
+           streaming_data.contains("\"serverSide\"") {
+            is_ssai = true;
+            has_ads = true;
+        }
+        
+        // Check for adPlaylist in streaming data
+        if streaming_data.contains("\"adPlaylist\"") {
             is_ssai = true;
             has_ads = true;
         }
     }
     
+    // Check for videoDetails with ad-related fields
+    if let Some(video_details) = extract_object_field(json_str, "videoDetails") {
+        if video_details.contains("\"allowAds\"") || video_details.contains("\"hasAds\"") {
+            has_ads = true;
+        }
+    }
+    
+    // Check for playabilityStatus that might indicate ads
+    if let Some(playability) = extract_object_field(json_str, "playabilityStatus") {
+        if playability.contains("\"miniplayer\"") && playability.contains("\"ads\"") {
+            has_ads = true;
+        }
+    }
+    
+    // NEW in v2: Check for msr (media stream rendering) which often indicates SSAI
+    if json_str.contains("\"msr\"") || json_str.contains("\"mediaStreamRendering\"") {
+        is_ssai = true;
+    }
+    
+    // NEW in v2: Check for cit (content identification) fields used in ad tracking
+    if json_str.contains("\"cit\"") && json_str.contains("\"ad\"") {
+        has_ads = true;
+    }
+    
+    let ad_count = ad_segments.len();
+    
     PlayerResponseAnalysis {
         has_ads,
         ad_segments,
         is_ssai,
-        ad_count: ad_segments.len(),
+        ad_count,
     }
 }
 
 fn parse_ad_break(break_json: &str) -> Option<AdSegment> {
+    // Try multiple field name patterns - YouTube uses different naming conventions
     let start_ms = extract_number_field(break_json, "startTimeMs")
         .or_else(|| extract_number_field(break_json, "startMs"))
+        .or_else(|| extract_number_field(break_json, "positionMs"))
         .unwrap_or(0);
     
+    // Duration or explicit end time
     let duration_ms = extract_number_field(break_json, "durationMs");
     let end_ms = extract_number_field(break_json, "endTimeMs");
+    
+    // NEW in v2: Also check for rtf (real-time feedback) timing fields
+    let rtf_start = extract_number_field(break_json, "rtfStartMs");
+    let rtf_end = extract_number_field(break_json, "rtfEndMs");
     
     let end_ms = if end_ms > 0 {
         end_ms
     } else if let Some(duration) = duration_ms {
         start_ms + duration
+    } else if let (Some(rtf_s), Some(rtf_e)) = (rtf_start, rtf_end) {
+        // Use RTF timing as fallback
+        rtf_e
     } else {
-        start_ms + 15000 // Default 15 second ad
+        start_ms + 15000 // Default 15 second ad if no timing found
     };
     
+    // Only return valid segments (must have positive duration)
     if start_ms > 0 && end_ms > start_ms {
         Some(AdSegment { start_ms, end_ms })
     } else {
@@ -118,13 +179,24 @@ fn parse_ad_break(break_json: &str) -> Option<AdSegment> {
 }
 
 fn parse_player_ad(ad_json: &str) -> Option<AdSegment> {
+    // Multiple possible start time fields
     let start_ms = extract_number_field(ad_json, "startTimeMs")
         .or_else(|| extract_number_field(ad_json, "positionMs"))
+        .or_else(|| extract_number_field(ad_json, "startMs"))
+        .or_else(|| extract_number_field(ad_json, "cueStartTimeMs"))
         .unwrap_or(0);
     
-    let duration_ms = extract_number_field(ad_json, "durationMs").unwrap_or(15000);
+    // Duration with better defaults
+    let duration_ms = extract_number_field(ad_json, "durationMs")
+        .or_else(|| extract_number_field(ad_json, "lengthMs"))
+        .unwrap_or(15000);
+    
     let end_ms = extract_number_field(ad_json, "endTimeMs")
+        .or_else(|| extract_number_field(ad_json, "cueEndTimeMs"))
         .unwrap_or(start_ms + duration_ms);
+    
+    // NEW in v2: Check for skip offset which indicates skippable ads
+    let _skip_offset = extract_number_field(ad_json, "skipOffset");
     
     if start_ms > 0 && end_ms > start_ms {
         Some(AdSegment { start_ms, end_ms })
