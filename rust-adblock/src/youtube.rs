@@ -153,17 +153,26 @@ fn parse_ad_break(break_json: &str) -> Option<AdSegment> {
     
     // Duration or explicit end time
     let duration_ms = extract_number_field(break_json, "durationMs");
-    let end_ms = extract_number_field(break_json, "endTimeMs");
+    let end_ms_val = extract_number_field(break_json, "endTimeMs");
     
     // NEW in v2: Also check for rtf (real-time feedback) timing fields
     let rtf_start = extract_number_field(break_json, "rtfStartMs");
     let rtf_end = extract_number_field(break_json, "rtfEndMs");
     
-    let end_ms = if end_ms > 0 {
-        end_ms
+    let end_ms = if let Some(end_val) = end_ms_val {
+        if end_val > 0 {
+            end_val
+        } else if let Some(duration) = duration_ms {
+            start_ms + duration
+        } else if let (Some(_rtf_s), Some(rtf_e)) = (rtf_start, rtf_end) {
+            // Use RTF timing as fallback
+            rtf_e
+        } else {
+            start_ms + 15000 // Default 15 second ad if no timing found
+        }
     } else if let Some(duration) = duration_ms {
         start_ms + duration
-    } else if let (Some(rtf_s), Some(rtf_e)) = (rtf_start, rtf_end) {
+    } else if let (Some(_rtf_s), Some(rtf_e)) = (rtf_start, rtf_end) {
         // Use RTF timing as fallback
         rtf_e
     } else {
