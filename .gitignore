@@ -1,9 +1,41 @@
-node_modules/
-rust-adblock/target/
-dist/
-*.log
-.DS_Store
+```
+# Compiled and build artifacts
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
 
-# Project meta (not part of the extension)
-freebuff-guide.md
-concept-ui/
+# Dependencies
+target/
+**/node_modules/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.mypy_cache/
+**/.pytest_cache/
+**/.gradle/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Rust specific
+Cargo.lock
+**/target/
+```
