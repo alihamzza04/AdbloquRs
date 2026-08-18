@@ -556,14 +556,7 @@
   // NEW in v5: Player Response Interception for SSAI Ad Detection
   // YouTube uses ytInitialPlayerResponse and ytInitialData to configure the player.
   // We intercept these to detect server-side ad insertion (SSAI) segments.
-  // ---------------------------------------------------------------------------
-  
-
-  // ---------------------------------------------------------------------------
-  // NEW in v5: Player Response Interception for SSAI Ad Detection
-  // YouTube uses ytInitialPlayerResponse and ytInitialData to configure the player.
-  // We intercept these to detect server-side ad insertion (SSAI) segments.
-  // Enhanced in v2 with more field patterns and SSAI indicators.
+  // Enhanced with comprehensive field patterns and proactive neutralization.
   // ---------------------------------------------------------------------------
 
   function extractAdSegments(playerResponse) {
@@ -654,6 +647,117 @@
     return segments;
   }
 
+  function neutralizePlayerResponse(value) {
+    // Aggressively remove ALL ad-related fields from the player response
+    // This is the same approach AdGuard uses - prevent YouTube from even knowing ads exist
+    
+    if (!value) return value;
+    
+    // === CRITICAL: Remove ad breaks entirely (pre-roll, mid-roll, post-roll) ===
+    if (value.adBreaks) {
+      value.adBreaks = [];
+    }
+    
+    // Remove player ads array
+    if (value.playerAds) {
+      value.playerAds = [];
+    }
+    
+    // Remove storyboards ad breaks
+    if (value.storyboards && value.storyboards.adBreaks) {
+      value.storyboards.adBreaks = [];
+    }
+    
+    // === CRITICAL: Neutralize streaming data ad fields (SSAI prevention) ===
+    if (value.streamingData) {
+      const sd = value.streamingData;
+      // Delete all known SSAI/ad manifest fields
+      delete sd.adManifestUrl;
+      delete sd.ssai;
+      delete sd.serverSide;
+      delete sd.adPlaylist;
+      delete sd.adTagUrl;
+      delete sd.serverSideAdManifestUrl;
+      delete sd.embeddedAdManifestUrl;
+      
+      // NEW: Also block HLS/DASH ad manifests
+      delete sd.hlsAdManifestUrl;
+      delete sd.dashAdManifestUrl;
+      
+      // Filter out any formats that might be ads or contain ad markers
+      if (sd.adaptiveFormats && Array.isArray(sd.adaptiveFormats)) {
+        sd.adaptiveFormats = sd.adaptiveFormats.filter(f => {
+          // Block any format marked as ad or with ad break ID
+          if (f.adBreakId || f.isAd || f.adMetadata) return false;
+          // Block formats with ad-specific URLs
+          if (f.url && (f.url.includes('ad=') || f.url.includes('/ads/'))) return false;
+          return true;
+        });
+      }
+      
+      // Also filter legacy formats
+      if (sd.formats && Array.isArray(sd.formats)) {
+        sd.formats = sd.formats.filter(f => !f.adBreakId && !f.isAd);
+      }
+    }
+    
+    // === Clear video details ad flags ===
+    if (value.videoDetails) {
+      const vd = value.videoDetails;
+      delete vd.allowAds;
+      delete vd.hasAds;
+      delete vd.showAds;
+      delete vd.adFlags;
+      delete vd.monetizationInfo;
+    }
+    
+    // === Remove playability status ad indicators ===
+    if (value.playabilityStatus) {
+      const ps = value.playabilityStatus;
+      delete ps.miniplayer;
+      delete ps.adReason;
+      delete ps.adPlaybackInfo;
+    }
+    
+    // === Clear tracking fields used for ad attribution ===
+    // cit = content identification tracking (used for ad measurement)
+    if (value.cit) {
+      delete value.cit;
+    }
+    
+    // msr = media stream rendering (indicates SSAI stream)
+    if (value.msr) {
+      delete value.msr;
+    }
+    
+    // mediaStreamRendering = another SSAI indicator
+    if (value.mediaStreamRendering) {
+      delete value.mediaStreamRendering;
+    }
+    
+    // === NEW: Remove additional ad-related fields YouTube may use ===
+    delete value.adPlacementConfig;
+    delete value.adSchedule;
+    delete value.companionSlots;
+    delete value.showCompanion;
+    
+    // Remove any nested ad objects we might have missed
+    if (value.ads) {
+      delete value.ads;
+    }
+    
+    if (value.adCuePoints) {
+      delete value.adCuePoints;
+    }
+    
+    // Clean up response context tracking
+    if (value.responseContext && value.responseContext.adTrackingParams) {
+      delete value.responseContext.adTrackingParams;
+    }
+    
+    return value;
+  }
+
   function interceptPlayerResponse() {
     // Intercept ytInitialPlayerResponse
     let originalPlayerResponse = null;
@@ -664,25 +768,21 @@
         configurable: true,
         set(value) {
           originalPlayerResponse = value;
-          lastPlayerResponse = value;
           
-          // Extract ad segments from the response
+          // First neutralize the response to prevent ad loading
+          const neutralized = neutralizePlayerResponse(JSON.parse(JSON.stringify(value)));
+          
+          // Extract ad segments from the ORIGINAL response (before neutralization)
           ssaiAdSegments = extractAdSegments(value);
           
           if (ssaiAdSegments.length > 0) {
-            console.log(`[AdbloquRs] Detected ${ssaiAdSegments.length} SSAI ad segment(s)`);
+            console.log(`[AdbloquRs] Detected ${ssaiAdSegments.length} SSAI ad segment(s), neutralizing...`);
           }
           
-          // Clear any ad-related fields to prevent ad rendering
-          if (value && value.playerAds) {
-            value.playerAds = [];
-          }
-          if (value && value.adBreaks) {
-            value.adBreaks = [];
-          }
+          lastPlayerResponse = neutralized;
           
           // Dispatch custom event for other scripts
-          window.dispatchEvent(new CustomEvent('adbloqurs-player-response', { detail: value }));
+          window.dispatchEvent(new CustomEvent('adbloqurs-player-response', { detail: neutralized }));
         },
         get() {
           return originalPlayerResponse;
@@ -690,6 +790,7 @@
       });
     } catch (e) {
       // Already defined, try alternative approach
+      console.warn("[AdbloquRs] Could not define ytInitialPlayerResponse property:", e);
     }
     
     // Also intercept ytInitialData which may contain ad info
@@ -700,9 +801,10 @@
         set(value) {
           originalInitialData = value;
           
-          // Check for ad-related content in initial data
+          // Check for ad-related content in initial data and neutralize
           if (value && value.contents) {
-            // Could contain promoted content markers
+            // Could contain promoted content markers - neutralize them
+            neutralizeInitialData(value);
           }
           
           window.dispatchEvent(new CustomEvent('adbloqurs-initial-data', { detail: value }));
@@ -713,6 +815,105 @@
       });
     } catch (e) {
       // Already defined
+      console.warn("[AdbloquRs] Could not define ytInitialData property:", e);
+    }
+    
+    // CRITICAL: Also intercept the JSON.parse function to catch player responses
+    // that are parsed inline rather than assigned to globals
+    const originalParse = JSON.parse;
+    JSON.parse = function(...args) {
+      const result = originalParse.apply(this, args);
+      
+      // Check if this looks like a player response - comprehensive check
+      if (result && typeof result === 'object') {
+        const isPlayerResponse = 
+          result.playbackTracking || 
+          result.streamingData || 
+          result.videoDetails || 
+          result.adBreaks ||
+          result.playerAds ||
+          result.storyboards ||
+          result.playabilityStatus ||
+          result.captions ||
+          (result.responseContext && result.responseContext.visitorData);
+        
+        if (isPlayerResponse) {
+          // Extract ad segments BEFORE neutralization for tracking
+          const extractedSegments = extractAdSegments(result);
+          if (extractedSegments.length > 0) {
+            console.log(`[AdbloquRs] JSON.parse: Found ${extractedSegments.length} ad segments`);
+          }
+          // Neutralize any ad-related fields
+          return neutralizePlayerResponse(result);
+        }
+      }
+      
+      return result;
+    };
+    
+    // ALSO intercept Response.json() for fetch API calls
+    if (window.Response && window.Response.prototype.json) {
+      const originalResponseJson = Response.prototype.json;
+      Response.prototype.json = async function(...args) {
+        const result = await originalResponseJson.apply(this, args);
+        
+        // Same player response detection
+        if (result && typeof result === 'object') {
+          const isPlayerResponse = 
+            result.playbackTracking || 
+            result.streamingData || 
+            result.videoDetails || 
+            result.adBreaks ||
+            result.playerAds;
+          
+          if (isPlayerResponse) {
+            const extractedSegments = extractAdSegments(result);
+            if (extractedSegments.length > 0) {
+              console.log(`[AdbloquRs] Response.json: Found ${extractedSegments.length} ad segments`);
+            }
+            return neutralizePlayerResponse(result);
+          }
+        }
+        
+        return result;
+      };
+    }
+  }
+  
+  function neutralizeInitialData(data) {
+    // Recursively walk through ytInitialData and remove promoted content
+    if (!data || typeof data !== 'object') return;
+    
+    // Remove promoted video sections
+    if (data.contents) {
+      const contents = data.contents;
+      
+      // Handle two-column watch results
+      if (contents.twoColumnWatchNextResults) {
+        const watch = contents.twoColumnWatchNextResults;
+        if (watch.results && watch.results.results) {
+          const results = watch.results.results.contents;
+          if (Array.isArray(results)) {
+            // Filter out promoted content
+            watch.results.results.contents = results.filter(item => {
+              return !item.richItemRenderer?.isAd &&
+                     !item.promotedVideoRenderer &&
+                     !item.compactPromotedVideoRenderer;
+            });
+          }
+        }
+      }
+      
+      // Handle rich grid renderer (home feed)
+      if (contents.richGridRenderer) {
+        const grid = contents.richGridRenderer;
+        if (grid.contents && Array.isArray(grid.contents)) {
+          grid.contents = grid.contents.filter(item => {
+            return !item.richItemRenderer?.isAd &&
+                   !item.richSectionRenderer?.content?.richShelfRenderer?.contents?.some(c => c.isAd);
+          });
+        }
+      }
     }
   }
 
