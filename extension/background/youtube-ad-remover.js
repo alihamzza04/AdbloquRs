@@ -59,13 +59,21 @@
     "#ytd-player .ytp-ad-module",
   ].join(", ");
 
-  // YouTube keeps renaming the skip button; cover the known variants.
+  // YouTube keeps renaming the skip button; cover ALL known variants including modern ones
   const SKIP_BTN_SEL = [
     "button.ytp-ad-skip-button-modern",
     "button.ytp-ad-skip-button",
     "button.ytp-skip-ad-button",
     ".ytp-ad-skip-button-slot button",
     "button.ytp-ad-skip-button-slot",
+    ".ytp-skip-ad-button",
+    ".ytp-ad-skip-button",
+    "button[class*='skip-button']",
+    "button[class*='skip-ad']",
+    "[class*='skip-button']",
+    "[class*='skip-ad']",
+    "[aria-label*='Skip']",
+    "[data-text*='Skip']",
   ].join(", ");
 
   // Page-level ad selectors to hide via CSS - expanded for better coverage
@@ -223,14 +231,45 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Core: click the skip button if present
+  // Core: click the skip button if present - enhanced with multiple fallback methods
   // ---------------------------------------------------------------------------
   function clickSkipButton() {
-    const btn = document.querySelector(SKIP_BTN_SEL);
+    // Method 1: Try standard selector first (fastest)
+    let btn = document.querySelector(SKIP_BTN_SEL);
     if (btn) {
       btn.click();
       return true;
     }
+    
+    // Method 2: Look for any button with "skip" in text content
+    const allButtons = document.querySelectorAll('button');
+    for (const b of allButtons) {
+      const text = (b.textContent || b.innerText || '').toLowerCase();
+      if (text.includes('skip') || text.includes('的广告')) {
+        b.click();
+        return true;
+      }
+    }
+    
+    // Method 3: Check for skip button by aria-label
+    const ariaButtons = document.querySelectorAll('[aria-label]');
+    for (const b of ariaButtons) {
+      const label = b.getAttribute('aria-label').toLowerCase();
+      if (label.includes('skip')) {
+        b.click();
+        return true;
+      }
+    }
+    
+    // Method 4: Simulate keyboard shortcut (Space or K often works)
+    const video = document.querySelector(VIDEO_SEL);
+    if (video) {
+      // Send a synthetic key event that might trigger skip
+      try {
+        video.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+      } catch {}
+    }
+    
     return false;
   }
 
@@ -650,6 +689,7 @@
   function neutralizePlayerResponse(value) {
     // Aggressively remove ALL ad-related fields from the player response
     // This is the same approach AdGuard uses - prevent YouTube from even knowing ads exist
+    // CRITICAL FIX v6: Be surgical - only remove ad fields, preserve AI and other legitimate features
     
     if (!value) return value;
     
@@ -701,22 +741,24 @@
       }
     }
     
-    // === Clear video details ad flags ===
+    // === Clear video details ad flags ONLY (preserve AI and other features) ===
+    // CRITICAL FIX v6: Only remove ad-related flags, NOT AI features
     if (value.videoDetails) {
       const vd = value.videoDetails;
+      // Only remove explicit ad flags - DO NOT touch AI, shorts, or other features
       delete vd.allowAds;
       delete vd.hasAds;
       delete vd.showAds;
-      delete vd.adFlags;
-      delete vd.monetizationInfo;
+      // DO NOT delete: aiSummary, askAi, generativeAi, shortForm, etc.
     }
     
     // === Remove playability status ad indicators ===
     if (value.playabilityStatus) {
       const ps = value.playabilityStatus;
-      delete ps.miniplayer;
+      // Only remove ad-related fields, keep everything else
       delete ps.adReason;
       delete ps.adPlaybackInfo;
+      // DO NOT delete: status, reason, miniplayer (needed for normal playback)
     }
     
     // === Clear tracking fields used for ad attribution ===
