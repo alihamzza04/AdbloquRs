@@ -1,45 +1,19 @@
-# Compiled and build artifacts
-*.o
-*.obj
-*.exe
-*.dll
-*.so
-*.a
-*.out
-# Dependencies
+```
+# Rust build artifacts
 target/
-**/target/
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-# Environment
-.env
-.env.local
-*.env.*
-# Editors
-.vscode/
-.idea/
-# Coverage
-coverage/
-htmlcov/
-.coverage
-# MyPy
-.mypy_cache/
-# PyTest
-.pytest_cache/
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-# Distribution / packaging
-.dist-info/
-*.egg-info/
-*.whl
-# Rust specific
-Cargo.lock
-*.rlib
-*.rmeta
-# Original rules preserved
-*.log
+**/*.rs.bk
+**/Cargo.lock
+
+# WASM artifacts
+**/*.wasm
+**/*.wasm.d
+
+# Debug symbols
+**/*.d
+
+# Dependency cache
+**/.cargo/
+
+# Incremental build files
+**/incremental/
+```
