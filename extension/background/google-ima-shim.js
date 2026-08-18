@@ -278,23 +278,32 @@ this.volume = v;
 skip() {}
 start() {
 requestAnimationFrame(() => {
-for (const type of [
-AdEvent.Type.LOADED,
-AdEvent.Type.STARTED,
-AdEvent.Type.CONTENT_PAUSE_REQUESTED,
-AdEvent.Type.AD_BUFFERING,
-AdEvent.Type.FIRST_QUARTILE,
-AdEvent.Type.MIDPOINT,
-AdEvent.Type.THIRD_QUARTILE,
-AdEvent.Type.COMPLETE,
-AdEvent.Type.ALL_ADS_COMPLETED,
-AdEvent.Type.CONTENT_RESUME_REQUESTED,
-]) {
-try {
-this._dispatch(new ima.AdEvent(type));
-} catch (e) {
-console.error(e);
-}
+// Fire events in the exact order YouTube expects - this is critical
+// for proper ad completion without showing ads
+const eventSequence = [
+  AdEvent.Type.LOADED,
+  AdEvent.Type.STARTED,
+  AdEvent.Type.CONTENT_PAUSE_REQUESTED,
+  AdEvent.Type.AD_BUFFERING,
+  AdEvent.Type.FIRST_QUARTILE,
+  AdEvent.Type.MIDPOINT,
+  AdEvent.Type.THIRD_QUARTILE,
+  AdEvent.Type.COMPLETE,
+  AdEvent.Type.ALL_ADS_COMPLETED,
+  AdEvent.Type.CONTENT_RESUME_REQUESTED,
+];
+
+// Fire each event with a tiny delay to simulate real ad progression
+let delay = 0;
+for (const type of eventSequence) {
+  setTimeout(() => {
+    try {
+      this._dispatch(new ima.AdEvent(type));
+    } catch (e) {
+      console.error(e);
+    }
+  }, delay);
+  delay += 50; // 50ms between events - fast enough to skip ads instantly
 }
 });
 }
