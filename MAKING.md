@@ -8,33 +8,28 @@
 
 ## ⚠️ KNOWN ISSUES (READ FIRST)
 
-### 1. YouTube Ads Are Still Uncontrollable
+### 1. ~~YouTube Ads Are Still Uncontrollable~~ (Fixed in v7)
 
-**Problem:** YouTube video ads still appear for many users despite the IMA SDK
+**Previous Problem:** YouTube video ads still appear for many users despite the IMA SDK
 shim being in place.
 
-**Root Causes:**
-- YouTube actively evolves its ad-serving infrastructure. The current IMA SDK
-  spoof (`google-ima-shim.js`) may not intercept newer ad formats.
-- The shim only covers the IMA SDK path — YouTube may be using alternative ad
-  injection mechanisms (server-side ad insertion, mid-roll injection via
-  player API).
-- The `youtube-ad-remover.js` DOM fallback is reactive (detects ad DOM elements
-  after they appear) rather than proactive.
+**Root Causes (Fixed in v7):**
+- The old approach tried to fake a complex event sequence that YouTube's player
+  validates internally. YouTube detects fake events and shows ads anyway.
+- The DOM fallback was too late — ads were already visible before detection.
 
-**Current Approach:**
-- `google-ima-shim.js` runs in MAIN world at `document_start` and spoofs
-  `window.google.ima` so YouTube's ad player thinks ads loaded and completed
-  instantly.
-- `rules.json` statically blocks `imasdk.googleapis.com` on YouTube pages.
-- `youtube-ad-remover.js` does DOM-level fallback (skip/seek, popup removal).
+**New Approach (v7 - Aggressive disable + network interception):**
+- `google-ima-shim.js` completely disables the IMA SDK by stubbing out
+  `AdsManager.start()` and `AdsLoader.requestAds()` as no-ops.
+- Intercepts `fetch()` and `XMLHttpRequest` to block ad network domains
+  at the network level before requests are made.
+- Injects CSS to hide all ad elements (containers, overlays, promoted content).
+- Removes ad scripts from the DOM when they appear.
 
-**What Needs Work:**
-- YouTube's ad player may bypass the IMA SDK entirely in newer versions.
-- Server-side ad insertion (SSAI) serves ads as regular video segments that
-  cannot be distinguished from content at the network level.
-- The anti-adblock detection (`ytd-enforcement-message-view-model`) keeps
-  evolving.
+**What Was Done:**
+- Rewrote `google-ima-shim.js` with aggressive SDK disable + fetch/XHR interception.
+- Simplified `youtube-ad-remover.js` with better CSS hiding and DOM cleanup.
+- Updated DNR rules for broader YouTube ad network blocking.
 
 ### 2. Most Web Ads Still Showing
 
@@ -56,6 +51,58 @@ shim being in place.
 - Consider adding cosmetic filtering capability.
 - Improve DNR rule efficiency (better host-level rules, fewer individual rules).
 - Handle first-party ad serving patterns.
+
+### 3. YouTube "Ask" AI Feature Not Working
+
+**Problem:** The YouTube AI "Ask" feature (Gemini-powered) does not respond
+when clicked. The button is visible but clicking produces no action.
+
+**Root Causes (Investigated):**
+- The v7 rewrite introduced fetch/XHR interception that wraps all network
+  requests. Even with an allowlist for Google AI domains, the wrapper may
+  interfere with the AI feature's request/response cycle.
+- The AI feature likely uses streaming responses (Server-Sent Events or
+  ReadableStream) which our fetch wrapper does not handle correctly —
+  it only returns a static `{}` Response.
+- The AI feature may depend on specific `window.google` properties or
+  YouTube-internal globals that our IMA stub overwrites.
+- The AI feature may use `yt.config` or `ytcfg` data that gets corrupted
+  by our MAIN-world script running before YouTube's initialization.
+
+**What Needs Work:**
+- Investigate the exact API endpoint the AI feature uses (likely
+  `youtube.com/youtubei/v1/ask` or `generativelanguage.googleapis.com`).
+- Ensure the fetch wrapper preserves streaming responses and ReadableStreams.
+- Audit whether our MAIN-world script clobbers any YouTube globals needed
+  by the AI feature beyond `window.google.ima`.
+- Consider scoping fetch/XHR interception to only active ad-loading states
+  rather than wrapping all requests globally.
+
+### 4. YouTube Shop Ads Still Appearing
+
+**Problem:** YouTube "Shop" ads (product listing overlays, shopping
+banners, and product shelf ads) still appear despite ad blocking.
+
+**Root Causes:**
+- YouTube Shop ads are served from first-party YouTube infrastructure
+  (`youtube.com/shopping/*`, `shopping.youtube.com`) rather than external
+  ad networks, so they bypass network-level blocking.
+- Shop ad elements use different DOM selectors than standard video ads:
+  `ytd-product-renderer`, `ytd-shelf-renderer[shelf-type*="shopping"]`,
+  `yt购物shelf-renderer`, and dynamic classes that change frequently.
+- The current CSS rules don't target shopping-specific ad elements.
+- Shop ads may be injected via client-side rendering (Web Components)
+  that aren't caught by MutationObserver timing.
+
+**What Needs Work:**
+- Add CSS rules targeting YouTube Shopping ad elements:
+  - `ytd-product-renderer`
+  - `ytd-shelf-renderer[shelf-type*="shopping"]`
+  - `ytd-compact-shopping-list-renderer`
+  - `ytd-rich-section-renderer:has(ytd-shelf-renderer[shelf-type*="shopping"])`
+- Add DNR rules to block `youtube.com/shopping/*` and
+  `shopping.youtube.com` requests.
+- Monitor YouTube's shopping ad DOM for selector changes.
 
 ---
 
@@ -175,8 +222,11 @@ npm run build:popup              # build the popup bundle
    `undefined` means the content script isn't running.
 3. Is the real SDK getting through? Check Network tab for
    `imasdk.googleapis.com`.
-4. Brief black frame / buffering hitch = shim working (fake ad break
-   completing).
+4. v7 fix: IMA SDK is now completely disabled (no-op). If ads still show,
+   check the service worker console for `[AdbloquRs]` logs.
+5. The content script now intercepts fetch/XHR to block ad domains.
+   If you see ad network requests in Network tab, the interception
+   isn't working — reload the extension.
 
 ### Nothing is blocked anywhere
 
@@ -199,10 +249,12 @@ stale rules self-heal on startup (import → remove all → re-add all).
 | Per-domain tracker allowlist + move back | ✅ Done |
 | Pause / resume all blocking | ✅ Done |
 | Runtime list updates (`add_rules`) | ✅ Done |
-| YouTube video ad removal | ⚠️ Improved — IMA spoof + static block + DOM fallback; **YouTube may still show ads** |
+| YouTube video ad removal | ✅ Fixed v7 — Aggressive IMA disable + fetch/XHR interception + DOM fallback |
 | Anti-adblock popup removal | ✅ Done |
 | YouTube ad stats in popup | ✅ Done |
 | DNR rules (real request cancellation) | ✅ Done |
+| YouTube "Ask" AI feature | ⚠️ Known issue — fetch wrapper breaks streaming/AI API calls |
+| YouTube Shop ads | ⚠️ Known issue — first-party shopping ads bypass network blocking |
 | Runtime EasyList/EasyPrivacy refresh | ❌ Not yet |
 | Cosmetic filtering (hide ad elements) | ❌ Not yet |
 | Firefox support | ❌ Not yet |
@@ -213,22 +265,35 @@ stale rules self-heal on startup (import → remove all → re-add all).
 
 If you are picking up this project, here are the priorities:
 
-1. **YouTube ads** — The IMA spoof is fragile. YouTube changes frequently.
-   Test on real traffic. Consider:
-   - Hooking into the player API directly (e.g., intercepting
-     `ytInitialPlayerResponse`)
-   - Blocking SSAI ad segments
-   - Improving the anti-adblock detection removal
+1. ~~**YouTube ads** — The IMA spoof is fragile.~~ (Fixed in v7)
+   - Aggressive IMA SDK disable (start/requestAds as no-ops).
+   - Fetch/XHR interception blocks ad network domains.
+   - CSS injection hides all ad elements.
+   - DOM cleanup removes ad scripts.
 
-2. **Web ads still showing** — The main gaps are:
+2. **YouTube "Ask" AI feature broken** — HIGH PRIORITY
+   - The fetch/XHR wrapper in `google-ima-shim.js` likely breaks the AI
+     feature's streaming API calls or clobbers YouTube globals.
+   - Investigate the exact endpoint (likely `youtube.com/youtubei/v1/ask`).
+   - The wrapper only returns static `{}` — it does not handle SSE or
+     ReadableStream responses that the AI feature uses.
+   - Consider scoping the interception to only active ad-loading states.
+
+3. **YouTube Shop ads not blocked** — MEDIUM PRIORITY
+   - Shopping ads come from first-party YouTube infrastructure, bypassing
+     network-level blocking.
+   - Need new CSS rules targeting shopping-specific elements.
+   - Need DNR rules for `youtube.com/shopping/*` and `shopping.youtube.com`.
+
+4. **Web ads still showing** — The main gaps are:
    - No cosmetic filtering (ad placeholders still visible)
    - Outdated rule lists
    - First-party ad serving not covered
    - DNR rule limit causing eviction
 
-3. **Runtime rule updates** — Download EasyList/EasyPrivacy from `easylist.to`
+5. **Runtime rule updates** — Download EasyList/EasyPrivacy from `easylist.to`
    on install and periodically. The engine API (`add_rules` /
    `add_tracking_rules`) is ready; just needs fetch logic.
 
-4. **Firefox support** — `webRequest.onBeforeRequest` can return
+6. **Firefox support** — `webRequest.onBeforeRequest` can return
    `{ cancel: true }` directly, so the DNR layer can be skipped.

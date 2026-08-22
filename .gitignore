@@ -1,19 +1,11 @@
-```
-# Rust build artifacts
-target/
-**/*.rs.bk
-**/Cargo.lock
+# Ignore everything
+/*
 
-# WASM artifacts
-**/*.wasm
-**/*.wasm.d
+# But not these files...
+!README.md
+!.gitignore
+!.github/
 
-# Debug symbols
-**/*.d
-
-# Dependency cache
-**/.cargo/
-
-# Incremental build files
-**/incremental/
-```
+# Keep .github directory but ignore its contents
+.github/*
+!.github/.gitkeep
