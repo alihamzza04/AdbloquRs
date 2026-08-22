@@ -104,7 +104,77 @@
     "priority": 2,
     "action": { "type": "block" },
     "condition": {
-      "urlFilter": "||youtube.com/youtubei/v1/player?key=*&ad*",
+      "urlFilter": "||youtube.com/youtubei/v1/player?key=*&adformat",
+      "resourceTypes": ["xmlhttprequest"],
+      "initiatorDomains": ["youtube.com", "youtube-nocookie.com"]
+    }
+  },
+  {
+    "id": 1000021,
+    "priority": 2,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||youtube.com/youtubei/v1/player?key=*&ad_type",
+      "resourceTypes": ["xmlhttprequest"],
+      "initiatorDomains": ["youtube.com", "youtube-nocookie.com"]
+    }
+  },
+  {
+    "id": 1000015,
+    "priority": 2,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||youtube.com/get_video_info",
+      "resourceTypes": ["xmlhttprequest"],
+      "initiatorDomains": ["youtube.com", "youtube-nocookie.com"]
+    }
+  },
+  {
+    "id": 1000016,
+    "priority": 2,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||youtube.com/api/stats/qoe",
+      "resourceTypes": ["xmlhttprequest"],
+      "initiatorDomains": ["youtube.com", "youtube-nocookie.com"]
+    }
+  },
+  {
+    "id": 1000017,
+    "priority": 2,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||youtube.com/s/player/*/player_ias.vflset/*/ads.js",
+      "resourceTypes": ["script"],
+      "initiatorDomains": ["youtube.com", "youtube-nocookie.com"]
+    }
+  },
+  {
+    "id": 1000018,
+    "priority": 2,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||youtube.com/s/player/*/player_ias.vflset/*/fanconomy_ad.js",
+      "resourceTypes": ["script"],
+      "initiatorDomains": ["youtube.com", "youtube-nocookie.com"]
+    }
+  },
+  {
+    "id": 1000019,
+    "priority": 2,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||s.youtube.com/sprehensive_ad",
+      "resourceTypes": ["xmlhttprequest"],
+      "initiatorDomains": ["youtube.com", "youtube-nocookie.com"]
+    }
+  },
+  {
+    "id": 1000020,
+    "priority": 2,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||youtube.com/youtubei/v1/log_event?*ad*",
       "resourceTypes": ["xmlhttprequest"],
       "initiatorDomains": ["youtube.com", "youtube-nocookie.com"]
     }
