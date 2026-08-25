@@ -1,11 +1,98 @@
-# Ignore everything
-/*
+# Rust build artifacts
+target/
+**/*.rs.bk
+**/Cargo.lock
 
-# But not these files...
-!README.md
-!.gitignore
-!.github/
+# WASM artifacts
+**/*.wasm
+**/*.wasm.d
 
-# Keep .github directory but ignore its contents
-.github/*
-!.github/.gitkeep
+# Debug symbols
+**/*.d
+
+# Dependency cache
+**/.cargo/
+
+# Incremental build files
+**/incremental/
+
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# Build outputs
+dist/
+build/
+*.log
+*.tgz
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Documentation files (except README)
+INSTALL.md
+MAKING.md
+YOUTUBE_AD_BLOCKING_FIXES.md
+YOUTUBE_AD_BLOCKING_FIXES_V6.md
+YOUTUBE_AD_BLOCKING_FIXES_V12.md
+YOUTUBE_AD_BLOCKING_FIXES_V13.md
+
+# AI and IDE generated files
+.devin/
+.agents/
+.cursor/
+.claude/
+*.ai
+*.gpt
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+*.cache
+
+# Extension build files
+extension/dist/
+extension/build/
+extension/*.log
+
+# Rust specific
+Cargo.lock
+
+# TypeScript
+*.tsbuildinfo
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Misc
+*.pid
+*.seed
+*.pid.lock

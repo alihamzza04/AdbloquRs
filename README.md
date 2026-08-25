@@ -76,11 +76,7 @@ npm run build:wasm && npm run build:popup
 
 ## Known Issues
 
-See `MAKING.md` for detailed developer documentation on:
-
-- **YouTube ads still appearing** — YouTube evolves its ad infrastructure; the IMA SDK spoof may not cover all ad formats
-- **Web ads not blocked** — No cosmetic filtering; outdated rule lists; first-party ad serving
-- Architecture details and troubleshooting
+- **YouTube ads still appearing** — YouTube evolves its ad infrastructure; the IMA SDK spoof 
 
 ---
 
@@ -132,4 +128,4 @@ npx tsc --noEmit -p tsconfig.app.json  # TypeScript typecheck
 
 ## License
 
-See individual files for license information. The IMA SDK shim is MPL-2.0 (from uBlock Origin/Mozilla).
+This project is licensed under the MIT License. See the LICENSE file for details.
